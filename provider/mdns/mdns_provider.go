@@ -1,12 +1,16 @@
+// Copyright IBM Corp. 2017, 2026
+// SPDX-License-Identifier: MPL-2.0
+
 // Package mdns provides node discovery via mDNS.
 package mdns
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	m "github.com/hashicorp/mdns"
@@ -40,7 +44,7 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 
 	// default to null logger
 	if l == nil {
-		l = log.New(ioutil.Discard, "", 0)
+		l = log.New(io.Discard, "", 0)
 	}
 
 	// init params
@@ -49,7 +53,7 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 	// validate and set service record
 	if args["service"] == "" {
 		return nil, fmt.Errorf("discover-mdns: Service record not provided." +
-			"  Please specify a service record for the mDNS lookup.")
+			"  Please specify a service record for the mDNS lookup")
 	}
 	params.Service = args["service"]
 
@@ -89,11 +93,16 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 
 	// init entries channel
 	ch = make(chan *m.ServiceEntry)
-	defer close(ch)
 	params.Entries = ch
 
-	// build addresses
+	// build addresses in a background goroutine as Query sends entries on
+	// the channel. A WaitGroup ensures we don't return before all entries
+	// have been processed.
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
+		defer wg.Done()
 		var addr string
 		for e := range ch {
 			addr = "" // reset addr each loop
@@ -114,6 +123,12 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 		}
 	}()
 
-	// lookup and return
-	return addrs, m.Query(params)
+	// Perform the mDNS query. Once Query returns, close the channel to
+	// signal the goroutine that no more entries will arrive, then wait
+	// for it to finish processing before returning the collected addrs.
+	err = m.Query(params)
+	close(ch)
+	wg.Wait()
+
+	return addrs, err
 }

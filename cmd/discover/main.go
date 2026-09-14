@@ -1,3 +1,6 @@
+// Copyright IBM Corp. 2017, 2025
+// SPDX-License-Identifier: MPL-2.0
+
 // discover provides node discovery on the command line.
 package main
 
@@ -5,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -32,7 +34,7 @@ func main() {
 
 	var w io.Writer = os.Stderr
 	if quiet {
-		w = ioutil.Discard
+		w = io.Discard
 	}
 	l := log.New(w, "", 0)
 

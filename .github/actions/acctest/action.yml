@@ -1,0 +1,83 @@
+# Copyright IBM Corp. 2017, 2026
+# SPDX-License-Identifier: MPL-2.0
+
+name: acctest
+description: "Acctest runs acceptance tests for go-discover"
+inputs:
+  provider-test-infra-dir:
+    description: 'Specifies a directory for test infrastructure'
+    required: false
+  provider-go-test-dir:
+    description: 'Specifies a directory for Go tests'
+    required: false
+  provider-go-test-tags:
+    description: 'Test flags for go'
+    required: false
+    default: ''
+  provider-tf-apply:
+    description: 'Applies terraform with auto-approve enabled'
+    required: false
+    default: terraform apply -auto-approve
+  provider-run-tf-apply:
+    description: 'Flag to opt-in to running tf-apply'
+    required: false
+    default: false
+  aws-region:
+    description: 'AWS region for resources; only used for AWS tests'
+    required: false
+  aws-role-arn:
+    description: 'AWS role to assume before testing; only used for AWS tests'
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@v2.0.3
+      with:
+        terraform_version: '1.14.8'
+
+    - name: Configure AWS Credentials
+      if: inputs.provider-test-infra-dir == 'aws'
+      uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355 # v2.2.0
+      with:
+        role-to-assume: ${{ inputs.aws-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Terraform Init
+      run: terraform init
+      shell: bash
+      working-directory: "./test/tf/${{ inputs.provider-test-infra-dir }}"
+
+    - name: Terraform Apply
+      if: inputs.provider-run-tf-apply == 'true'
+      run: "${{ inputs.provider-tf-apply }}"
+      shell: bash
+      working-directory: "./test/tf/${{ inputs.provider-test-infra-dir }}"
+
+    - name: Run provider tests
+      run: |-
+        mkdir -p "$TEST_RESULTS"
+        gotestsum -f standard-verbose --junitfile ${TEST_RESULTS}/results.xml -- \
+          -run ${{ inputs.provider-go-test-tags }} \
+          -v ./provider/${{ inputs.provider-go-test-dir }}
+      if: inputs.provider-go-test-tags != ''
+      shell: bash
+
+    - name: Run provider tests
+      if: inputs.provider-go-test-tags == ''
+      shell: bash
+      run: |-
+        mkdir -p "$TEST_RESULTS"
+        gotestsum -f standard-verbose --junitfile "${TEST_RESULTS}/results.xml" -- \
+          -v ./provider/${{ inputs.provider-go-test-dir }}
+
+    - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808   # v4.3.3
+      with:
+        path: ${{ env.TEST_RESULTS }}
+        name: tests-${{ inputs.provider-test-infra-dir }}
+
+    - name: Terraform Destroy
+      run: terraform destroy --auto-approve
+      if: always()
+      shell: bash
+      working-directory: "./test/tf/${{ inputs.provider-test-infra-dir }}"

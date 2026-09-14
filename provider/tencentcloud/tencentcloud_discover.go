@@ -1,9 +1,12 @@
+// Copyright IBM Corp. 2017, 2025
+// SPDX-License-Identifier: MPL-2.0
+
 // Package tencentcloud provides node discovery for TencentCloud.
 package tencentcloud
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -37,11 +40,11 @@ func (p *Provider) Help() string {
 
 func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error) {
 	if args["provider"] != "tencentcloud" {
-		return nil, fmt.Errorf("discover-tencentcloud: invalid provider " + args["provider"])
+		return nil, fmt.Errorf("discover-tencentcloud: invalid provider %s", args["provider"])
 	}
 
 	if l == nil {
-		l = log.New(ioutil.Discard, "", 0)
+		l = log.New(io.Discard, "", 0)
 	}
 
 	region := args["region"]
@@ -70,7 +73,7 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 
 	if addressType != "private_v4" && addressType != "public_v4" {
 		l.Printf("[DEBUG] discover-tencentcloud: Address type %s invalid", addressType)
-		return nil, fmt.Errorf("discover-tencentcloud: invalid address_type " + addressType)
+		return nil, fmt.Errorf("discover-tencentcloud: invalid address_type %s", addressType)
 	}
 	l.Printf("[DEBUG] discover-tencentcloud: address type is %s", addressType)
 

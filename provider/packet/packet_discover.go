@@ -1,3 +1,6 @@
+// Copyright IBM Corp. 2017, 2025
+// SPDX-License-Identifier: MPL-2.0
+
 package packet
 
 import (
@@ -136,7 +139,7 @@ func Include(vs []string, t string) bool {
 	return Index(vs, t) >= 0
 }
 
-//Any returns true if one of the strings in the slice satisfies the predicate f.
+// Any returns true if one of the strings in the slice satisfies the predicate f.
 func Any(vs []string, f func(string) bool) bool {
 	for _, v := range vs {
 		if f(v) {

@@ -1,3 +1,6 @@
+// Copyright IBM Corp. 2017, 2026
+// SPDX-License-Identifier: MPL-2.0
+
 // Package os provides node discovery for Openstack.
 package os
 
@@ -5,7 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -32,6 +35,7 @@ func (p *Provider) Help() string {
     provider:   "os"
     auth_url:   The endpoint of OS identity
     project_id: The id of the project (tenant id)
+    project_name: The name of the project (tenant name)
     tag_key:    The tag key to filter on
     tag_value:  The tag value to filter on
     user_name:  The user used to authenticate
@@ -45,29 +49,18 @@ func (p *Provider) Help() string {
 
 func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error) {
 	if args["provider"] != "os" {
-		return nil, fmt.Errorf("discover-os: invalid provider " + args["provider"])
+		return nil, fmt.Errorf("discover-os: invalid provider %s", args["provider"])
 	}
 
 	if l == nil {
-		l = log.New(ioutil.Discard, "", 0)
+		l = log.New(io.Discard, "", 0)
 	}
 
-	projectID := args["project_id"]
 	tagKey := args["tag_key"]
 	tagValue := args["tag_value"]
 	var err error
 
-	if projectID == "" { // Use the one on the instance if not provided either by parameter or env
-		l.Printf("[INFO] discover-os: ProjectID not provided. Looking up in metadata...")
-		projectID, err = getProjectID()
-		if err != nil {
-			return nil, err
-		}
-		l.Printf("[INFO] discover-os: ProjectID is %s", projectID)
-		args["project_id"] = projectID
-	}
-
-	log.Printf("[DEBUG] discover-os: Using project_id=%s tag_key=%s tag_value=%s", projectID, tagKey, tagValue)
+	log.Printf("[DEBUG] discover-os: Using tag_key=%s tag_value=%s", tagKey, tagValue)
 	client, err := newClient(args, l)
 	if err != nil {
 		return nil, err
@@ -77,7 +70,7 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 		client.UserAgent.Prepend(p.userAgent)
 	}
 
-	pager := servers.List(client, ListOpts{ListOpts: servers.ListOpts{Status: "ACTIVE"}, ProjectID: projectID})
+	pager := servers.List(client, ListOpts{ListOpts: servers.ListOpts{Status: "ACTIVE"}})
 	if err := pager.Err; err != nil {
 		return nil, fmt.Errorf("discover-os: ListServers failed: %s", err)
 	}
@@ -127,12 +120,24 @@ func newClient(args map[string]string, l *log.Logger) (*gophercloud.ServiceClien
 		region = "RegionOne"
 	}
 	projectID := argsOrEnv(args, "project_id", "OS_PROJECT_ID")
+	projectName := argsOrEnv(args, "project_name", "OS_PROJECT_NAME")
 	insecure := argsOrEnv(args, "insecure", "OS_INSECURE")
 	domain_id := argsOrEnv(args, "domain_id", "OS_DOMAIN_ID")
 	domain_name := argsOrEnv(args, "domain_name", "OS_DOMAIN_NAME")
 
 	if url == "" {
 		return nil, fmt.Errorf("discover-os: Auth url must be provided")
+	}
+
+	if projectID == "" && projectName == "" { // Use the one on the instance if not provided either by parameter or env
+		l.Printf("[INFO] discover-os: ProjectID not provided. Looking up in metadata...")
+		var err error
+		projectID, err = getProjectID()
+		if err != nil {
+			return nil, err
+		}
+		l.Printf("[INFO] discover-os: ProjectID is %s", projectID)
+		args["project_id"] = projectID
 	}
 
 	ao := gophercloud.AuthOptions{
@@ -143,6 +148,7 @@ func newClient(args map[string]string, l *log.Logger) (*gophercloud.ServiceClien
 		Password:         password,
 		TokenID:          token,
 		TenantID:         projectID,
+		TenantName:       projectName,
 	}
 
 	client, err := openstack.NewClient(ao.IdentityEndpoint)
@@ -156,7 +162,7 @@ func newClient(args map[string]string, l *log.Logger) (*gophercloud.ServiceClien
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
-			DualStack: true,
+			DualStack: true, //nolint:staticcheck
 		}).DialContext,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -208,11 +214,13 @@ func getProjectID() (string, error) {
 	data := struct {
 		ProjectID string `json:"project_id"`
 	}{}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("discover-os: Can't read response body: %s", err)
 	}
-	resp.Body.Close()
+	if err = resp.Body.Close(); err != nil {
+		return "", fmt.Errorf("discover-os: Can't close response body: %s", err)
+	}
 	if err = json.Unmarshal(body, &data); err != nil {
 		return "", fmt.Errorf("discover-os: Can't convert project_id: %s", err)
 	}

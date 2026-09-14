@@ -1,9 +1,12 @@
+// Copyright IBM Corp. 2017, 2025
+// SPDX-License-Identifier: MPL-2.0
+
 // Package scaleway provides node discovery for Scaleway.
 package scaleway
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 
 	api "github.com/nicolai86/scaleway-sdk"
@@ -24,11 +27,11 @@ func (p *Provider) Help() string {
 
 func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error) {
 	if args["provider"] != "scaleway" {
-		return nil, fmt.Errorf("discover-scaleway: invalid provider " + args["provider"])
+		return nil, fmt.Errorf("discover-scaleway: invalid provider %s", args["provider"])
 	}
 
 	if l == nil {
-		l = log.New(ioutil.Discard, "", 0)
+		l = log.New(io.Discard, "", 0)
 	}
 
 	organization := args["organization"]
@@ -57,13 +60,11 @@ func (p *Provider) Addrs(args map[string]string, l *log.Logger) ([]string, error
 
 	// Filter servers by tag
 	var addrs []string
-	if servers != nil {
-		for _, server := range servers {
-			if stringInSlice(tagName, server.Tags) {
-				l.Printf("[DEBUG] discover-scaleway: Found server (%s) - %s with private IP: %s",
-					server.Name, server.Hostname, server.PrivateIP)
-				addrs = append(addrs, server.PrivateIP)
-			}
+	for _, server := range servers {
+		if stringInSlice(tagName, server.Tags) {
+			l.Printf("[DEBUG] discover-scaleway: Found server (%s) - %s with private IP: %s",
+				server.Name, server.Hostname, server.PrivateIP)
+			addrs = append(addrs, server.PrivateIP)
 		}
 	}
 

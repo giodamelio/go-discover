@@ -1,3 +1,6 @@
+# Copyright IBM Corp. 2017, 2025
+# SPDX-License-Identifier: MPL-2.0
+
 module "network" {
   source        = "./modules/network"
   address_space = var.address_space
@@ -9,7 +12,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-trusty-14.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
   }
 
   filter {
